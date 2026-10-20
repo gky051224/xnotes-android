@@ -238,6 +238,8 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
     val ai by lazy { com.xnotes.ai.AiAssistant(appContext) }
 
     fun openAiPage() {
+        commitText()
+        flowText.endSession()
         val index = state.currentPageIndex()
         val rect = state.pageRects.getOrNull(index) ?: return
         prepareAi("${state.document.title} · 第 ${index + 1} 页", rect)
@@ -245,7 +247,7 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
 
     fun openAiScreenshot() {
         val rect = controller.screenshotRect ?: return
-        prepareAi("${state.document.title} · 框选内容", rect)
+        prepareAi("${state.document.title} · 第 ${state.currentPageIndex() + 1} 页框选内容", rect)
         controller.clearScreenshot()
         controller.switchBackAfterScreenshot()
     }
