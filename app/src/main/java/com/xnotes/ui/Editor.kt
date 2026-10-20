@@ -253,10 +253,8 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
     }
 
     fun openAiSelection() {
-        val rect = selectionMenu ?: return
-        val a = state.viewportToContent(Pt(rect.left, rect.top))
-        val b = state.viewportToContent(Pt(rect.right, rect.bottom))
-        prepareAi("${state.document.title} · 选中笔记", Rect.ltrb(minOf(a.x, b.x), minOf(a.y, b.y), maxOf(a.x, b.x), maxOf(a.y, b.y)))
+        val rect = controller.selectedContentBounds() ?: return
+        prepareAi("${state.document.title} · 所选笔记区域", rect)
         dismissSelectionMenu()
     }
 
