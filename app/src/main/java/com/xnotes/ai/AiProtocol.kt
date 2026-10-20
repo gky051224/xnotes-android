@@ -28,6 +28,13 @@ object AiProtocol {
     const val MAX_ANSWER = 32_000
     const val MAX_TURNS = 4
 
+    /** A provider check contains no page images, note text or conversation history. */
+    fun connectionTestRequest(config: AiConfig): String {
+        config.validate()
+        return JSONObject().put("model", config.model.trim()).put("stream", false).put("max_tokens", 64)
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", "请只回复 OK。"))).toString()
+    }
+
     fun request(config: AiConfig, source: AiSource, history: List<AiTurn>, question: String): String {
         config.validate()
         require(question.isNotBlank() && question.length <= 4_000) { "问题需要在 1–4000 字以内" }

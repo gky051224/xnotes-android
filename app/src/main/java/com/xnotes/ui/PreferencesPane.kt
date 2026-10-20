@@ -126,6 +126,8 @@ fun PreferencesPane(
 ) {
     val palette = LocalPalette.current
     val focusManager = LocalFocusManager.current
+    var aiModelOpen by remember { mutableStateOf(false) }
+    if (aiModelOpen) com.xnotes.ai.AiProviderSettings(editor.ai) { aiModelOpen = false }
     var prefs by remember { mutableStateOf(editor.preferences) }
     fun update(p: Preferences) {
         prefs = p
@@ -222,6 +224,10 @@ fun PreferencesPane(
                 .onGloballyPositioned { viewport = it.boundsInRoot() },
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            SectionTitle("AI 模型")
+            Text("配置模型接口、API Key 和图片输入，保存后在阅读助手中使用。", color = palette.text.toComposeColor(), fontSize = 14.sp)
+            TextButton(onClick = { aiModelOpen = true }) { Text("配置 AI 模型") }
+            HorizontalDivider()
             SectionTitle(stringResource(R.string.pref_general))
             FieldLabel(stringResource(R.string.pref_ui_theme))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

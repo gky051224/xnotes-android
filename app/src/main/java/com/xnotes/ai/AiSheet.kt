@@ -3,9 +3,11 @@ package com.xnotes.ai
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -20,39 +22,90 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.xnotes.ui.Editor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 @Composable
 fun AiToolbarButton(editor: Editor) {
-    IconButton(onClick = { editor.openAiPage() }) {
+    IconButton(onClick = { if (editor.ai.visible) editor.ai.close() else editor.openAiPage() }) {
         Icon(Icons.Outlined.AutoAwesome, contentDescription = "AI 阅读助手")
     }
 }
 
 @Composable
-fun AiSheet(editor: Editor) {
+fun AiWorkspace(editor: Editor, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val ai = editor.ai
-    if (!ai.visible) return
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    var question by remember(ai.source) { mutableStateOf("") }
+    val draft = remember(ai.source) { AiQuestionDraft() }
+    val settings = remember(ai.config) { AiSettingsDraft(ai.config) }
     val list = rememberLazyListState()
+    // This lifecycle belongs to the editor, not to either presentation. Resizing the app
+    // must not cancel a request or discard a question when the panel becomes a dialog.
     DisposableEffect(ai) { onDispose { ai.close() } }
+    BackHandler(enabled = ai.visible) { ai.close() }
+    LaunchedEffect(editor.canvasOpen) { if (editor.canvasOpen) ai.close() }
     LaunchedEffect(ai.turns.size, ai.loading) {
         if (ai.turns.isNotEmpty()) list.animateScrollToItem(ai.turns.lastIndex)
     }
-    Dialog(onDismissRequest = ai::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    val send: () -> Unit = {
+        val sent = draft.question
+        val count = ai.turns.size
+        ai.job = scope.launch {
+            ai.ask(sent)
+            if (ai.turns.size > count) draft.question = ""
+        }
+    }
+    BoxWithConstraints(modifier) {
+        val docked = maxWidth >= 840.dp && !editor.canvasOpen
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxHeight()) { content() }
+            if (ai.visible && docked) {
+                VerticalDivider()
+                AiContent(editor, draft, settings, list, send, docked = true,
+                    modifier = Modifier.width(360.dp).fillMaxHeight())
+            }
+        }
+        if (ai.visible && !docked) {
+            Dialog(onDismissRequest = ai::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                AiContent(editor, draft, settings, list, send, docked = false,
+                    modifier = Modifier.padding(16.dp).widthIn(max = 840.dp).fillMaxWidth().fillMaxHeight(0.94f))
+            }
+        }
+    }
+}
+
+private class AiQuestionDraft { var question by mutableStateOf("") }
+
+private class AiSettingsDraft(config: AiConfig) {
+    var url by mutableStateOf(config.baseUrl)
+    var model by mutableStateOf(config.model)
+    var key by mutableStateOf(config.apiKey)
+    var vision by mutableStateOf(config.vision)
+}
+
+@Composable
+private fun AiContent(
+    editor: Editor, draft: AiQuestionDraft, settings: AiSettingsDraft,
+    list: LazyListState, send: () -> Unit, docked: Boolean, modifier: Modifier,
+) {
+    val ai = editor.ai
+    val context = LocalContext.current
         Surface(
-            modifier = Modifier.padding(16.dp).widthIn(max = 840.dp).fillMaxWidth().fillMaxHeight(0.94f),
-            shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 6.dp,
+            modifier = modifier,
+            shape = if (docked) RectangleShape else MaterialTheme.shapes.extraLarge,
+            tonalElevation = if (docked) 1.dp else 6.dp,
         ) {
-            Column(Modifier.padding(20.dp)) {
+            Column(Modifier.padding(if (docked) 16.dp else 20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
                     Text("AI 阅读助手", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 10.dp).weight(1f))
@@ -61,14 +114,20 @@ fun AiSheet(editor: Editor) {
                     }
                     IconButton(onClick = ai::close) { Icon(Icons.Outlined.Close, "关闭 AI 助手") }
                 }
-                Text(ai.source?.label.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(ai.source?.label.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     if (ai.source?.imageBase64 != null && ai.config.vision) "范围：当前页或框选内容（含图片），并非整本书" else "范围：本次选取的文字，并非整本书",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
                 )
+                if (docked) {
+                    TextButton(onClick = { editor.openAiPage() }, enabled = !ai.loading) {
+                        Text("新对话 · 使用当前页")
+                    }
+                }
                 HorizontalDivider()
                 if (ai.settingsOpen) {
-                    AiSettings(ai, Modifier.weight(1f))
+                    AiSettings(ai, settings, Modifier.weight(1f))
                 } else {
                     if (ai.turns.isEmpty()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 18.dp)) {
@@ -108,10 +167,10 @@ fun AiSheet(editor: Editor) {
                             "总结重点" to "请总结这份内容的核心观点和重点，使用简洁的条目。",
                             "解释难点" to "请找出这份内容中较难理解的概念，用通俗语言和例子解释。",
                             "生成复习题" to "请基于这份内容生成 3 道复习题，将参考答案放在题目之后。",
-                        ).forEach { (label, prompt) -> AssistChip(onClick = { question = prompt }, label = { Text(label) }, enabled = !ai.loading) }
+                        ).forEach { (label, prompt) -> AssistChip(onClick = { draft.question = prompt }, label = { Text(label) }, enabled = !ai.loading) }
                     }
                     OutlinedTextField(
-                        value = question, onValueChange = { if (it.length <= 4_000) question = it },
+                        value = draft.question, onValueChange = { if (it.length <= 4_000) draft.question = it },
                         label = { Text("针对这份内容提问") }, modifier = Modifier.fillMaxWidth(),
                         minLines = 2, maxLines = 4, enabled = !ai.loading,
                     )
@@ -123,49 +182,83 @@ fun AiSheet(editor: Editor) {
                             TextButton(onClick = ai::stop) { Text("停止") }
                         } else {
                             Text(ai.config.model, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
-                            Button(onClick = {
-                                val sent = question
-                                val count = ai.turns.size
-                                ai.job = scope.launch {
-                                    ai.ask(sent)
-                                    if (ai.turns.size > count) question = ""
-                                }
-                            }, enabled = question.isNotBlank()) { Text("发送") }
+                            Button(onClick = send, enabled = draft.question.isNotBlank()) { Text("发送") }
                         }
                     }
                 }
                 ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
             }
         }
-    }
 }
 
 @Composable
-private fun AiSettings(ai: AiAssistant, modifier: Modifier) {
-    var url by remember(ai.config) { mutableStateOf(ai.config.baseUrl) }
-    var model by remember(ai.config) { mutableStateOf(ai.config.model) }
-    var key by remember(ai.config) { mutableStateOf(ai.config.apiKey) }
-    var vision by remember(ai.config) { mutableStateOf(ai.config.vision) }
+private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifier, onDone: (() -> Unit)? = null) {
+    val scope = rememberCoroutineScope()
+    var testing by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    var passed by remember { mutableStateOf(false) }
+    var testJob by remember { mutableStateOf<Job?>(null) }
     Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Spacer(Modifier.height(4.dp))
         Text("连接你的模型", style = MaterialTheme.typography.titleMedium)
         Text("支持 Chat Completions 格式的兼容接口。手写和扫描页需要支持图片输入的模型。", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(url, { url = it }, label = { Text("接口地址") }, placeholder = { Text("https://你的服务商/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(model, { model = it }, label = { Text("模型名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(key, { key = it }, label = { Text("API Key") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(draft.url, { draft.url = it; result = null }, label = { Text("接口地址") }, placeholder = { Text("https://你的服务商/v1") }, singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(draft.model, { draft.model = it; result = null }, label = { Text("模型名称") }, singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(draft.key, { draft.key = it; result = null }, label = { Text("API Key") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("附带页面图片")
                 Text("关闭后只发送提取的文字", style = MaterialTheme.typography.bodySmall)
             }
-            Switch(checked = vision, onCheckedChange = { vision = it })
+            Switch(checked = draft.vision, onCheckedChange = { draft.vision = it })
         }
         Text("API Key 在本机加密保存，不会写入笔记或随系统备份同步。", style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = {
+                testJob = scope.launch {
+                    testing = true
+                    result = null
+                    passed = false
+                    try {
+                        val config = AiConfig(draft.url, draft.model, draft.key, draft.vision)
+                        AiProtocol.answer(withTimeout(30_000) { AiHttp.complete(config, AiProtocol.connectionTestRequest(config)) })
+                        passed = true
+                        result = "连接成功，文字对话接口可用"
+                    } catch (_: TimeoutCancellationException) { result = "连接超时，请检查地址和网络" }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { result = if (e is IllegalArgumentException) e.message else "无法连接，请检查网络和接口地址" }
+                    finally { testing = false }
+                }
+            }, enabled = !testing) { Text(if (testing) "测试中…" else "测试连接") }
+            if (testing) {
+                TextButton(onClick = { testJob?.cancel(); testing = false }) { Text("停止测试") }
+            }
+        }
+        Text("测试只发送一句文字，不会上传笔记；图片能力需在阅读时验证。", style = MaterialTheme.typography.bodySmall)
+        result?.let { Text(it, color = if (passed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { ai.saveConfig(AiConfig(url, model, key, vision)) }) { Text("保存设置") }
-            TextButton(onClick = { ai.saveConfig(AiConfig()) }) { Text("清除配置") }
-            TextButton(onClick = { ai.settingsOpen = false }) { Text("返回") }
+            Button(onClick = { if (ai.saveConfig(AiConfig(draft.url, draft.model, draft.key, draft.vision))) onDone?.invoke() }, enabled = !testing) { Text("保存设置") }
+            TextButton(onClick = { if (ai.saveConfig(AiConfig())) onDone?.invoke() }, enabled = !testing) { Text("清除配置") }
+            TextButton(onClick = { if (onDone != null) onDone() else ai.settingsOpen = false }) { Text("返回") }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+fun AiProviderSettings(ai: AiAssistant, onClose: () -> Unit) {
+    val draft = remember(ai.config) { AiSettingsDraft(ai.config) }
+    LaunchedEffect(ai) { ai.error = null; ai.reloadConfig() }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.padding(16.dp).widthIn(max = 600.dp).fillMaxWidth().fillMaxHeight(0.94f), shape = MaterialTheme.shapes.extraLarge) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("AI 模型", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "关闭模型设置") }
+                }
+                AiSettings(ai, draft, Modifier.weight(1f), onDone = onClose)
+                ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        }
     }
 }

@@ -299,6 +299,7 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
                 if (state.document === doc && noteOpen) {
                     ai.open(com.xnotes.ai.AiSource(label, text, encoded),
                         valid = { noteOpen && state.document === doc }, save = ::appendAiNote)
+                    message = null
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (_: Exception) { message = "无法准备 AI 阅读内容，请缩小选区后重试" }

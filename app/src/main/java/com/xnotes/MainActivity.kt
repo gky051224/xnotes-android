@@ -1177,8 +1177,9 @@ private fun EditorPane(
             }
         }
     }
+    com.xnotes.ai.AiWorkspace(editor, modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier.fillMaxSize()
             .background(palette.bg.toComposeColor())
             .then(takeFocus)
             .focusRequester(focusRequester)
@@ -1275,8 +1276,8 @@ private fun EditorPane(
             }
             // Last child of the resized column: rides directly above the soft keyboard.
             com.xnotes.ui.TextFormatBar(editor)
-            com.xnotes.ai.AiSheet(editor)
         }
+    }
     }
 }
 

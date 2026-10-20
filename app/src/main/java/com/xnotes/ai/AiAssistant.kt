@@ -39,6 +39,10 @@ class AiAssistant(context: Context) {
     private var requestVersion = 0
 
     init {
+        reloadConfig()
+    }
+
+    fun reloadConfig() {
         runCatching { preferences.load() }.onSuccess { config = it }.onFailure {
             error = "无法读取旧的模型配置，请重新填写"
         }
@@ -46,6 +50,7 @@ class AiAssistant(context: Context) {
 
     fun open(source: AiSource, valid: () -> Boolean, save: (String) -> Unit) {
         close()
+        reloadConfig()
         this.source = source
         this.valid = valid
         this.save = save

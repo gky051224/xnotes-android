@@ -7,6 +7,21 @@ import org.junit.Test
 class AiProtocolTest {
     private val config = AiConfig("https://example.com/v1/", "vision-model", "test-key")
 
+    @Test fun connectionTestUsesOnlyMinimalTextWithoutCredentialsOrSources() {
+        val json = JSONObject(AiProtocol.connectionTestRequest(config))
+        val messages = json.getJSONArray("messages")
+        assertEquals(1, messages.length())
+        assertEquals("user", messages.getJSONObject(0).getString("role"))
+        assertEquals("请只回复 OK。", messages.getJSONObject(0).getString("content"))
+        assertFalse(json.toString().contains("test-key"))
+        assertFalse(json.toString().contains("image_url"))
+    }
+
+    @Test fun connectionTestRequiresCompleteProviderSettings() {
+        assertThrows(IllegalArgumentException::class.java) { AiProtocol.connectionTestRequest(config.copy(apiKey = "")) }
+        assertThrows(IllegalArgumentException::class.java) { AiProtocol.connectionTestRequest(config.copy(baseUrl = "http://example.com")) }
+    }
+
     @Test fun endpointAcceptsBaseOrFullPath() {
         assertEquals("https://example.com/v1/chat/completions", config.endpoint())
         assertEquals("https://example.com/custom/chat/completions", config.copy(baseUrl = "https://example.com/custom/chat/completions/").endpoint())
