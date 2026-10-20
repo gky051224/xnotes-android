@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-preview-${{ github.event.pull_request.head.sha || github.sha }}
+  group: ai-preview-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

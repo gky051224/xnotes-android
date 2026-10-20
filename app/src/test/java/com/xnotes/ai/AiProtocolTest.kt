@@ -33,7 +33,7 @@ class AiProtocolTest {
     @Test fun disablingVisionOmitsImageEvenWhenCaptured() {
         val json = JSONObject(AiProtocol.request(config.copy(vision = false), AiSource("PDF 文字", "可提取文字", "private-image"), emptyList(), "解释"))
         assertFalse(json.toString().contains("private-image"))
-        assertEquals(1, json.getJSONArray("messages").getJSONObject(1).getJSONArray("content").length())
+        assertTrue(json.getJSONArray("messages").getJSONObject(1).getString("content").contains("可提取文字"))
     }
 
     @Test fun imageOnlySourceRequiresVision() {
