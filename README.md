@@ -1,3 +1,14 @@
+# XNotes AI 阅读笔记（派生预览版）
+
+基于 [shardulvs/xnotes-android](https://github.com/shardulvs/xnotes-android) 二次开发，增加当前页、截图框选和 PDF 选中文字的 AI 阅读助手。支持提问、总结、生成复习题，以及把回答保存为可编辑、可撤销的笔记新页。
+
+- 使用方式、验收步骤和限制：[AI_PREVIEW.md](AI_PREVIEW.md)。
+- 构建与 APK：[本仓库 Actions](https://github.com/gky051224/xnotes-android/actions/workflows/ai-preview.yml)。
+- 本派生版增加联网权限；只有点击 AI 助手的“发送”才会请求所配置的模型服务。API Key 在本机加密保存。调用模型需要用户自己的服务商账号、接口地址和 Key。
+- 应用 ID 为 `io.github.gky051224.xnotes`（调试版带 `.debug`），可与上游安装包共存。
+
+下方为上游项目介绍；其中商店和上游 Releases 链接对应原版安装包。
+
 <p align="center">
   <img src="docs/readme-banner.png" width="100%" alt="xnotes: a handwriting-first notebook for Android" />
 </p>
@@ -55,7 +66,7 @@
 - **Your notes, your folders**: notes are saved as files in a folder you choose, not locked away in an app's database, so you stay in full control of them.
 - **Works with stylus pens**: S Pen and many others.
 - **Always editable**: nothing gets flattened, so every stroke can be moved, restyled or erased later.
-- **Private**: open source, no account, no ads, no tracking, no permissions.
+- **Private**: open source, no app account, no ads or tracking. This fork adds optional, user-triggered requests to your configured AI provider.
 
 ## Install
 

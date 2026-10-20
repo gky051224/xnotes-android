@@ -320,8 +320,10 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
         val first = doc.pages.size
         val commands = chunks.mapIndexed { offset, chunk ->
             val page = Page(w, h)
+            val paper = state.paperColor(page)
+            val ink = if (paper.r * 299 + paper.g * 587 + paper.b * 114 >= 128_000) Rgba(28, 28, 28) else Rgba(236, 236, 236)
             page.items.add(com.xnotes.core.model.TextItem(Pt(margin, margin), width = w - 2 * margin,
-                text = chunk, rgba = defaultTextColor(), pointSize = 15.0, face = FontFace.SANS, measurer = textMeasurer))
+                text = chunk, rgba = ink, pointSize = 15.0, face = FontFace.SANS, measurer = textMeasurer))
             AddPage(doc, page, first + offset)
         }
         val command = CompositeCommand(commands)

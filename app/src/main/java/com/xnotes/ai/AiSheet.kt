@@ -3,7 +3,6 @@ package com.xnotes.ai
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -84,8 +83,6 @@ fun AiSheet(editor: Editor) {
                             }
                         }
                     } else {
-                        // saveVersion makes the saved marker observable without storing another copy of the answer.
-                        val saveVersion = ai.saveVersion
                         LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             itemsIndexed(ai.turns) { index, turn ->
                                 Column {
@@ -98,7 +95,7 @@ fun AiSheet(editor: Editor) {
                                             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                                                 .setPrimaryClip(ClipData.newPlainText("AI 阅读笔记", turn.answer))
                                         }) { Text("复制") }
-                                        TextButton(onClick = { ai.saveAnswer(index) }, enabled = !ai.isSaved(index) && saveVersion >= 0) {
+                                        TextButton(onClick = { ai.saveAnswer(index) }, enabled = !ai.isSaved(index)) {
                                             Text(if (ai.isSaved(index)) "已追加到笔记" else "追加到笔记")
                                         }
                                     }

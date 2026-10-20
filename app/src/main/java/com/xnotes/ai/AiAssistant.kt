@@ -15,6 +15,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 
@@ -34,7 +35,7 @@ class AiAssistant(context: Context) {
     val turns = mutableStateListOf<AiTurn>()
     private var valid: () -> Boolean = { false }
     private var save: (String) -> Unit = {}
-    private val saved = mutableSetOf<Int>()
+    private val saved = mutableStateListOf<Int>()
     private var requestVersion = 0
 
     init {
@@ -89,6 +90,8 @@ class AiAssistant(context: Context) {
             val answer = AiProtocol.answer(withTimeout(120_000) { AiHttp.complete(config, body) })
             if (source === held && valid()) turns.add(AiTurn(question.trim(), answer))
             else error = "来源笔记已切换，请重新打开 AI 助手"
+        } catch (_: TimeoutCancellationException) {
+            error = "模型响应超时，请重试或换用更快的模型"
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -102,8 +105,6 @@ class AiAssistant(context: Context) {
 
     fun stop() { requestVersion++; job?.cancel(); job = null; loading = false }
     fun isSaved(index: Int): Boolean = index in saved
-    var saveVersion by mutableStateOf(0)
-        private set
 
     fun saveAnswer(index: Int) {
         if (index in saved) return
@@ -112,7 +113,6 @@ class AiAssistant(context: Context) {
         try {
             save("AI 阅读笔记\n来源：${source?.label.orEmpty()}\n\n问题：${turn.question}\n\n${turn.answer}")
             saved += index
-            saveVersion++
         } catch (_: Exception) { error = "回答保存失败，可以先复制回答后重试" }
     }
 }
