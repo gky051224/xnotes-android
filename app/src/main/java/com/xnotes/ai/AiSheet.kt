@@ -1,0 +1,174 @@
+package com.xnotes.ai
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.xnotes.ui.Editor
+import kotlinx.coroutines.launch
+
+@Composable
+fun AiToolbarButton(editor: Editor) {
+    IconButton(onClick = { editor.openAiPage() }) {
+        Icon(Icons.Outlined.AutoAwesome, contentDescription = "AI 阅读助手")
+    }
+}
+
+@Composable
+fun AiSheet(editor: Editor) {
+    val ai = editor.ai
+    if (!ai.visible) return
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var question by remember(ai.source) { mutableStateOf("") }
+    val list = rememberLazyListState()
+    DisposableEffect(ai) { onDispose { ai.close() } }
+    LaunchedEffect(ai.turns.size, ai.loading) {
+        if (ai.turns.isNotEmpty()) list.animateScrollToItem(ai.turns.lastIndex)
+    }
+    Dialog(onDismissRequest = ai::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier.padding(16.dp).widthIn(max = 840.dp).fillMaxWidth().fillMaxHeight(0.94f),
+            shape = MaterialTheme.shapes.extraLarge,
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                    Text("AI 阅读助手", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 10.dp).weight(1f))
+                    IconButton(onClick = { ai.settingsOpen = !ai.settingsOpen }, enabled = !ai.loading) {
+                        Icon(Icons.Outlined.Settings, "模型设置")
+                    }
+                    IconButton(onClick = ai::close) { Icon(Icons.Outlined.Close, "关闭 AI 助手") }
+                }
+                Text(ai.source?.label.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    if (ai.source?.imageBase64 != null && ai.config.vision) "范围：当前页或框选内容（含图片），并非整本书" else "范围：本次选取的文字，并非整本书",
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+                )
+                HorizontalDivider()
+                if (ai.settingsOpen) {
+                    AiSettings(ai, Modifier.weight(1f))
+                } else {
+                    if (ai.turns.isEmpty()) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 18.dp)) {
+                            Text("边读边问，让想法留在笔记里", style = MaterialTheme.typography.titleMedium)
+                            Text("可以解释难点、整理重点，或根据这一页生成复习题。回答可保存为笔记末尾的新页，并支持撤销。", modifier = Modifier.padding(top = 10.dp))
+                            val text = ai.source?.text.orEmpty()
+                            if (text.isNotBlank()) {
+                                Text("来源文字预览", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 22.dp))
+                                SelectionContainer { Text(text.take(600), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+                            } else {
+                                Text("本次使用页面图片识别手写或扫描内容，需要支持图片输入的模型。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 22.dp))
+                            }
+                        }
+                    } else {
+                        // saveVersion makes the saved marker observable without storing another copy of the answer.
+                        val saveVersion = ai.saveVersion
+                        LazyColumn(Modifier.weight(1f), state = list, contentPadding = PaddingValues(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            itemsIndexed(ai.turns) { index, turn ->
+                                Column {
+                                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large) {
+                                        Text(turn.question, Modifier.padding(12.dp))
+                                    }
+                                    SelectionContainer { Text(turn.answer, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyLarge) }
+                                    Row {
+                                        TextButton(onClick = {
+                                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                                .setPrimaryClip(ClipData.newPlainText("AI 阅读笔记", turn.answer))
+                                        }) { Text("复制") }
+                                        TextButton(onClick = { ai.saveAnswer(index) }, enabled = !ai.isSaved(index) && saveVersion >= 0) {
+                                            Text(if (ai.isSaved(index)) "已追加到笔记" else "追加到笔记")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            "总结重点" to "请总结这份内容的核心观点和重点，使用简洁的条目。",
+                            "解释难点" to "请找出这份内容中较难理解的概念，用通俗语言和例子解释。",
+                            "生成复习题" to "请基于这份内容生成 3 道复习题，将参考答案放在题目之后。",
+                        ).forEach { (label, prompt) -> AssistChip(onClick = { question = prompt }, label = { Text(label) }, enabled = !ai.loading) }
+                    }
+                    OutlinedTextField(
+                        value = question, onValueChange = { if (it.length <= 4_000) question = it },
+                        label = { Text("针对这份内容提问") }, modifier = Modifier.fillMaxWidth(),
+                        minLines = 2, maxLines = 4, enabled = !ai.loading,
+                    )
+                    Text("发送时，所选内容与本轮对话会提交到你配置的模型服务。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+                        if (ai.loading) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("正在思考…", Modifier.padding(horizontal = 10.dp))
+                            TextButton(onClick = ai::stop) { Text("停止") }
+                        } else {
+                            Text(ai.config.model, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Button(onClick = {
+                                val sent = question
+                                val count = ai.turns.size
+                                ai.job = scope.launch {
+                                    ai.ask(sent)
+                                    if (ai.turns.size > count) question = ""
+                                }
+                            }, enabled = question.isNotBlank()) { Text("发送") }
+                        }
+                    }
+                }
+                ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiSettings(ai: AiAssistant, modifier: Modifier) {
+    var url by remember(ai.config) { mutableStateOf(ai.config.baseUrl) }
+    var model by remember(ai.config) { mutableStateOf(ai.config.model) }
+    var key by remember(ai.config) { mutableStateOf(ai.config.apiKey) }
+    var vision by remember(ai.config) { mutableStateOf(ai.config.vision) }
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(4.dp))
+        Text("连接你的模型", style = MaterialTheme.typography.titleMedium)
+        Text("支持 Chat Completions 格式的兼容接口。手写和扫描页需要支持图片输入的模型。", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(url, { url = it }, label = { Text("接口地址") }, placeholder = { Text("https://你的服务商/v1") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(model, { model = it }, label = { Text("模型名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(key, { key = it }, label = { Text("API Key") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("附带页面图片")
+                Text("关闭后只发送提取的文字", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = vision, onCheckedChange = { vision = it })
+        }
+        Text("API Key 在本机加密保存，不会写入笔记或随系统备份同步。", style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { ai.saveConfig(AiConfig(url, model, key, vision)) }) { Text("保存设置") }
+            TextButton(onClick = { ai.saveConfig(AiConfig()) }) { Text("清除配置") }
+            TextButton(onClick = { ai.settingsOpen = false }) { Text("返回") }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}

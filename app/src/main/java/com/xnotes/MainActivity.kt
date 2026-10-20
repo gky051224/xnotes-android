@@ -1275,6 +1275,7 @@ private fun EditorPane(
             }
             // Last child of the resized column: rides directly above the soft keyboard.
             com.xnotes.ui.TextFormatBar(editor)
+            com.xnotes.ai.AiSheet(editor)
         }
     }
 }
