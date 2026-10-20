@@ -105,6 +105,8 @@ private fun AiContent(
             shape = if (docked) RectangleShape else MaterialTheme.shapes.extraLarge,
             tonalElevation = if (docked) 1.dp else 6.dp,
         ) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+            val compactHeight = maxHeight < 560.dp
             Column(Modifier.padding(if (docked) 16.dp else 20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
@@ -115,12 +117,12 @@ private fun AiContent(
                     IconButton(onClick = ai::close) { Icon(Icons.Outlined.Close, "关闭 AI 助手") }
                 }
                 Text(ai.source?.label.orEmpty(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
+                    maxLines = if (compactHeight) 1 else 2, overflow = TextOverflow.Ellipsis)
+                if (!compactHeight) Text(
                     if (ai.source?.imageBase64 != null && ai.config.vision) "范围：当前页或框选内容（含图片），并非整本书" else "范围：本次选取的文字，并非整本书",
                     style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
                 )
-                if (docked) {
+                if (docked && !compactHeight) {
                     TextButton(onClick = { editor.openAiPage() }, enabled = !ai.loading) {
                         Text("新对话 · 使用当前页")
                     }
@@ -162,7 +164,7 @@ private fun AiContent(
                             }
                         }
                     }
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!compactHeight) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(
                             "总结重点" to "请总结这份内容的核心观点和重点，使用简洁的条目。",
                             "解释难点" to "请找出这份内容中较难理解的概念，用通俗语言和例子解释。",
@@ -172,9 +174,9 @@ private fun AiContent(
                     OutlinedTextField(
                         value = draft.question, onValueChange = { if (it.length <= 4_000) draft.question = it },
                         label = { Text("针对这份内容提问") }, modifier = Modifier.fillMaxWidth(),
-                        minLines = 2, maxLines = 4, enabled = !ai.loading,
+                        minLines = if (compactHeight) 1 else 2, maxLines = if (compactHeight) 3 else 4, enabled = !ai.loading,
                     )
-                    Text("发送时，所选内容与本轮对话会提交到你配置的模型服务。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                    Text(if (compactHeight) "发送所选内容至你配置的模型服务" else "发送时，所选内容与本轮对话会提交到你配置的模型服务。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
                         if (ai.loading) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -187,6 +189,7 @@ private fun AiContent(
                     }
                 }
                 ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+            }
             }
         }
 }
