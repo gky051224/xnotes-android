@@ -31,7 +31,7 @@
             android:launchMode="singleTask"
             android:theme="@style/Theme.Xnotes.Splash"
             android:hardwareAccelerated="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode|locale|layoutDirection|grammaticalGender"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -52,6 +52,13 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
