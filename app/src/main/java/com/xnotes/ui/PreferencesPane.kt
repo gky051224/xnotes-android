@@ -126,8 +126,6 @@ fun PreferencesPane(
 ) {
     val palette = LocalPalette.current
     val focusManager = LocalFocusManager.current
-    var aiModelOpen by remember { mutableStateOf(false) }
-    if (aiModelOpen) com.xnotes.ai.AiProviderSettings(editor.ai) { aiModelOpen = false }
     var prefs by remember { mutableStateOf(editor.preferences) }
     fun update(p: Preferences) {
         prefs = p
@@ -144,6 +142,11 @@ fun PreferencesPane(
     LaunchedEffect(editor.prefsVersion) { prefs = editor.preferences }
 
     val scrollState = rememberScrollState()
+    // Returning from either reading pane reveals the AI section at the top, even
+    // when this backstage page was already composed and scrolled underneath it.
+    LaunchedEffect(editor.noteOpen, editor.secondary?.noteOpen) {
+        if (!editor.noteOpen && editor.secondary?.noteOpen != true) scrollState.scrollTo(0)
+    }
     // Which bar the toolbar section is arranging. The two are separate layouts, so the drag state
     // below always belongs to whichever is on screen.
     var canvasTab by remember { mutableStateOf(false) }
@@ -225,8 +228,7 @@ fun PreferencesPane(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SectionTitle("AI 模型")
-            Text("配置模型接口、API Key 和图片输入，保存后在阅读助手中使用。", color = palette.text.toComposeColor(), fontSize = 14.sp)
-            TextButton(onClick = { aiModelOpen = true }) { Text("配置 AI 模型") }
+            com.xnotes.ai.AiPreferencesSection(editor.ai)
             HorizontalDivider()
             SectionTitle(stringResource(R.string.pref_general))
             FieldLabel(stringResource(R.string.pref_ui_theme))

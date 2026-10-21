@@ -43,11 +43,10 @@ fun AiToolbarButton(editor: Editor) {
 }
 
 @Composable
-fun AiWorkspace(editor: Editor, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun AiWorkspace(editor: Editor, modifier: Modifier = Modifier, onOpenPreferences: () -> Unit, content: @Composable () -> Unit) {
     val ai = editor.ai
     val scope = rememberCoroutineScope()
     val draft = remember(ai.source) { AiQuestionDraft() }
-    val settings = remember(ai.config) { AiSettingsDraft(ai.config) }
     val list = rememberLazyListState()
     // This lifecycle belongs to the editor, not to either presentation. Resizing the app
     // must not cancel a request or discard a question when the panel becomes a dialog.
@@ -71,13 +70,13 @@ fun AiWorkspace(editor: Editor, modifier: Modifier = Modifier, content: @Composa
             Box(Modifier.weight(1f).fillMaxHeight()) { content() }
             if (ai.visible && docked) {
                 VerticalDivider()
-                AiContent(editor, draft, settings, list, send, docked = true,
+                AiContent(editor, draft, list, send, onOpenPreferences, docked = true,
                     modifier = Modifier.width(360.dp).fillMaxHeight())
             }
         }
         if (ai.visible && !docked) {
             Dialog(onDismissRequest = ai::close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                AiContent(editor, draft, settings, list, send, docked = false,
+                AiContent(editor, draft, list, send, onOpenPreferences, docked = false,
                     modifier = Modifier.padding(16.dp).widthIn(max = 840.dp).fillMaxWidth().fillMaxHeight(0.94f))
             }
         }
@@ -95,8 +94,8 @@ private class AiSettingsDraft(config: AiConfig) {
 
 @Composable
 private fun AiContent(
-    editor: Editor, draft: AiQuestionDraft, settings: AiSettingsDraft,
-    list: LazyListState, send: () -> Unit, docked: Boolean, modifier: Modifier,
+    editor: Editor, draft: AiQuestionDraft,
+    list: LazyListState, send: () -> Unit, onOpenPreferences: () -> Unit, docked: Boolean, modifier: Modifier,
 ) {
     val ai = editor.ai
     val context = LocalContext.current
@@ -111,8 +110,8 @@ private fun AiContent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
                     Text("AI 阅读助手", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 10.dp).weight(1f))
-                    IconButton(onClick = { ai.settingsOpen = !ai.settingsOpen }, enabled = !ai.loading) {
-                        Icon(Icons.Outlined.Settings, "模型设置")
+                    IconButton(onClick = onOpenPreferences, enabled = !ai.loading) {
+                        Icon(Icons.Outlined.Settings, "偏好设置中的 AI 模型")
                     }
                     IconButton(onClick = ai::close) { Icon(Icons.Outlined.Close, "关闭 AI 助手") }
                 }
@@ -128,8 +127,12 @@ private fun AiContent(
                     }
                 }
                 HorizontalDivider()
-                if (ai.settingsOpen) {
-                    AiSettings(ai, settings, Modifier.weight(1f))
+                if (ai.config.apiKey.isBlank()) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 18.dp)) {
+                        Text("先连接你的 AI 模型", style = MaterialTheme.typography.titleMedium)
+                        Text("在偏好设置的「AI 模型」中填写接口地址、模型名称和 API Key，保存后即可回来提问。", modifier = Modifier.padding(top = 10.dp))
+                        Button(onClick = onOpenPreferences, modifier = Modifier.padding(top = 16.dp)) { Text("前往偏好设置") }
+                    }
                 } else {
                     if (ai.turns.isEmpty()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 18.dp)) {
@@ -195,13 +198,13 @@ private fun AiContent(
 }
 
 @Composable
-private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifier, onDone: (() -> Unit)? = null) {
+private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifier) {
     val scope = rememberCoroutineScope()
     var testing by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
     var passed by remember { mutableStateOf(false) }
     var testJob by remember { mutableStateOf<Job?>(null) }
-    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Spacer(Modifier.height(4.dp))
         Text("连接你的模型", style = MaterialTheme.typography.titleMedium)
         Text("支持 Chat Completions 格式的兼容接口。手写和扫描页需要支持图片输入的模型。", style = MaterialTheme.typography.bodySmall)
@@ -213,7 +216,7 @@ private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifi
                 Text("附带页面图片")
                 Text("关闭后只发送提取的文字", style = MaterialTheme.typography.bodySmall)
             }
-            Switch(checked = draft.vision, onCheckedChange = { draft.vision = it })
+            Switch(checked = draft.vision, onCheckedChange = { draft.vision = it; result = null }, enabled = !testing)
         }
         Text("API Key 在本机加密保存，不会写入笔记或随系统备份同步。", style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -240,28 +243,35 @@ private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifi
         Text("测试只发送一句文字，不会上传笔记；图片能力需在阅读时验证。", style = MaterialTheme.typography.bodySmall)
         result?.let { Text(it, color = if (passed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { if (ai.saveConfig(AiConfig(draft.url, draft.model, draft.key, draft.vision))) onDone?.invoke() }, enabled = !testing) { Text("保存设置") }
-            TextButton(onClick = { if (ai.saveConfig(AiConfig())) onDone?.invoke() }, enabled = !testing) { Text("清除配置") }
-            TextButton(onClick = { if (onDone != null) onDone() else ai.settingsOpen = false }) { Text("返回") }
+            Button(onClick = {
+                if (ai.saveConfig(AiConfig(draft.url, draft.model, draft.key, draft.vision))) {
+                    passed = true
+                    result = "模型配置已保存"
+                }
+            }, enabled = !testing) { Text("保存设置") }
+            TextButton(onClick = {
+                if (ai.saveConfig(AiConfig())) {
+                    draft.url = ""; draft.model = ""; draft.key = ""; draft.vision = true
+                    passed = true
+                    result = "模型配置已清除"
+                }
+            }, enabled = !testing) { Text("清除配置") }
         }
         Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
-fun AiProviderSettings(ai: AiAssistant, onClose: () -> Unit) {
-    val draft = remember(ai.config) { AiSettingsDraft(ai.config) }
-    LaunchedEffect(ai) { ai.error = null; ai.reloadConfig() }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.padding(16.dp).widthIn(max = 600.dp).fillMaxWidth().fillMaxHeight(0.94f), shape = MaterialTheme.shapes.extraLarge) {
-            Column(Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("AI 模型", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "关闭模型设置") }
-                }
-                AiSettings(ai, draft, Modifier.weight(1f), onDone = onClose)
-                ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            }
-        }
+fun AiPreferencesSection(ai: AiAssistant) {
+    val draft = remember(ai) { AiSettingsDraft(ai.config) }
+    LaunchedEffect(ai) {
+        ai.error = null
+        ai.reloadConfig()
+        draft.url = ai.config.baseUrl
+        draft.model = ai.config.model
+        draft.key = ai.config.apiKey
+        draft.vision = ai.config.vision
     }
+    AiSettings(ai, draft, Modifier.widthIn(max = 600.dp).fillMaxWidth())
+    ai.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }

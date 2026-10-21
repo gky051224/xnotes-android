@@ -877,6 +877,12 @@ private fun EditorScreen(
                     backstageView = com.xnotes.ui.BackstageView.HOME
                     guardedAll { editor.goHomeAll() }
                 },
+                onOpenPreferences = {
+                    guardedAll {
+                        backstageView = com.xnotes.ui.BackstageView.PREFERENCES
+                        editor.goHomeAll()
+                    }
+                },
                 onClosePane = { pane -> guarded(pane) { pane.goHome() } },
                 onInsertImage = { pane, at ->
                     pendingInsert = PendingInsert(pane, at)
@@ -1036,6 +1042,7 @@ private class PaneActions(
     val onToggleFullscreen: () -> Unit,
     /** Leave for the backstage, closing every open pane. */
     val onOpenBackstage: () -> Unit,
+    val onOpenPreferences: () -> Unit,
     /** Close just this pane, leaving the other one to fill the window. */
     val onClosePane: (Editor) -> Unit,
     val onInsertImage: (Editor, com.xnotes.core.geometry.Pt?) -> Unit,
@@ -1177,7 +1184,7 @@ private fun EditorPane(
             }
         }
     }
-    com.xnotes.ai.AiWorkspace(editor, modifier) {
+    com.xnotes.ai.AiWorkspace(editor, modifier, onOpenPreferences = actions.onOpenPreferences) {
     Column(
         modifier = Modifier.fillMaxSize()
             .background(palette.bg.toComposeColor())

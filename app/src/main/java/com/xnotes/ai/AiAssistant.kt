@@ -30,7 +30,6 @@ class AiAssistant(context: Context) {
     var loading by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
-    var settingsOpen by mutableStateOf(false)
     var job: Job? = null
     val turns = mutableStateListOf<AiTurn>()
     private var valid: () -> Boolean = { false }
@@ -55,7 +54,6 @@ class AiAssistant(context: Context) {
         this.valid = valid
         this.save = save
         visible = true
-        settingsOpen = config.apiKey.isBlank()
     }
 
     fun close() {
@@ -75,7 +73,6 @@ class AiAssistant(context: Context) {
     fun saveConfig(value: AiConfig): Boolean = try {
         preferences.save(value)
         config = value.copy(apiKey = value.apiKey.trim())
-        settingsOpen = false
         error = null
         true
     } catch (e: Exception) {
