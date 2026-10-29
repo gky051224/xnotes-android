@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GridOff
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -140,7 +141,7 @@ fun SelectionMenu(host: SelectionMenuHost) {
     var styleOpen by remember { mutableStateOf(false) }
 
     val barHeightPx = with(density) { 48.dp.toPx() }
-    val barWidthPx = with(density) { (6 * 46).dp.toPx() }
+    val barWidthPx = with(density) { ((if (host is Editor) 7 else 6) * 46).dp.toPx() }
     val gap = with(density) { 10.dp.toPx() }
     val centerX = ((rect.left + rect.right) / 2.0).toFloat()
     val xPx = (centerX - barWidthPx / 2f).coerceAtLeast(with(density) { 8.dp.toPx() })
@@ -161,6 +162,9 @@ fun SelectionMenu(host: SelectionMenuHost) {
                 .background(palette.menuBg.toComposeColor())
                 .border(1.dp, palette.border.toComposeColor(), MaterialTheme.shapes.medium),
         ) {
+            if (host is Editor) {
+                ActionIcon(Icons.Outlined.AutoAwesome, "问 AI") { host.openAiSelection() }
+            }
             ActionIcon(XnotesIcons.trash, stringResource(R.string.delete), shortcut = Keys.DELETE) { host.deleteSelection() }
             ActionIcon(XnotesIcons.cut, stringResource(R.string.cut)) { host.cutSelection() }
             ActionIcon(XnotesIcons.copy, stringResource(R.string.copy)) { host.copySelection(); host.dismissSelectionMenu() }
@@ -391,8 +395,8 @@ fun ScreenshotMenu(editor: Editor) {
     val palette = LocalPalette.current
     val density = LocalDensity.current
 
-    val barHeightPx = with(density) { 44.dp.toPx() }
-    val barWidthPx = with(density) { 170.dp.toPx() }
+    val barHeightPx = with(density) { 48.dp.toPx() }
+    val barWidthPx = with(density) { 250.dp.toPx() }
     val gap = with(density) { 10.dp.toPx() }
     val centerX = ((rect.left + rect.right) / 2.0).toFloat()
     val xPx = (centerX - barWidthPx / 2f).coerceAtLeast(with(density) { 8.dp.toPx() })
@@ -407,22 +411,14 @@ fun ScreenshotMenu(editor: Editor) {
             .clip(MaterialTheme.shapes.medium)
             .background(palette.menuBg.toComposeColor())
             .border(1.dp, palette.border.toComposeColor(), MaterialTheme.shapes.medium)
-            .clickable { editor.copyScreenshotAsImage() }
-            .padding(horizontal = 14.dp, vertical = 11.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            XnotesIcons.copy,
-            contentDescription = stringResource(R.string.copy_as_image),
-            tint = palette.text.toComposeColor(),
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            stringResource(R.string.copy_as_image),
-            color = palette.text.toComposeColor(),
-            fontSize = 14.sp,
-            modifier = Modifier.padding(start = 8.dp),
-        )
+        TextButton(onClick = { editor.copyScreenshotAsImage() }) {
+            Icon(XnotesIcons.copy, null, tint = palette.text.toComposeColor(), modifier = Modifier.size(20.dp))
+            Text(stringResource(R.string.copy_as_image), color = palette.text.toComposeColor(), modifier = Modifier.padding(start = 8.dp))
+        }
+        TextButton(onClick = { editor.openAiScreenshot() }) { Text("问 AI") }
     }
 }
 
@@ -581,7 +577,7 @@ fun PdfSelectionMenu(editor: Editor) {
     var overflowOpen by remember { mutableStateOf(false) }
 
     val barHeightPx = with(density) { 48.dp.toPx() }
-    val barWidthPx = with(density) { ((1 + PDF_MARKS.size + if (actions.isEmpty()) 0 else 1) * 46).dp.toPx() }
+    val barWidthPx = with(density) { ((2 + PDF_MARKS.size + if (actions.isEmpty()) 0 else 1) * 46).dp.toPx() }
     val gap = with(density) { 10.dp.toPx() }
     val margin = with(density) { 8.dp.toPx() }
     // When pushed below the selection, also clear the teardrop handles hanging there.
@@ -604,6 +600,7 @@ fun PdfSelectionMenu(editor: Editor) {
                 .border(1.dp, palette.border.toComposeColor(), MaterialTheme.shapes.medium),
         ) {
             ActionIcon(XnotesIcons.copy, stringResource(R.string.copy), shortcut = Keys.COPY) { editor.copyPdfText() }
+            ActionIcon(Icons.Outlined.AutoAwesome, "问 AI") { editor.openAiPdfText() }
             for ((type, icon, label) in PDF_MARKS) {
                 ActionIcon(icon, stringResource(label)) { editor.markPdfSelection(type) }
             }

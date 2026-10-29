@@ -11,7 +11,7 @@ import android.view.Display
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -137,7 +137,7 @@ private fun standardPenAction(action: Int): Int = when (action) {
     else -> -1
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     // The editor owns the fullscreen state (persisted preference, default depends on the display
     // cutout); this activity just applies it to the window. Fullscreen draws edge to edge and lets
@@ -233,7 +233,8 @@ class MainActivity : ComponentActivity() {
         else -> null
     }
 
-    // uiMode is in configChanges, so a system dark/light flip lands here instead of recreating us.
+    // Theme and locale changes are handled in place. Compose receives the updated
+    // resources while the document, question draft and AI session keep their owners.
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         val night = newConfig.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
@@ -298,6 +299,7 @@ private fun EditorScreen(
     // Backstage is the root of the stack; the editor is pushed on top only when a note is open
     // (editor.noteOpen). Every launch starts on backstage.
     var backstageView by remember { mutableStateOf(com.xnotes.ui.BackstageView.HOME) }
+    var readingPreferences by remember { mutableStateOf(false) }
     var showShareChooser by remember { mutableStateOf(false) }
     var guardAction by remember { mutableStateOf<GuardRequest?>(null) }
     var pendingAfterSave by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -772,7 +774,10 @@ private fun EditorScreen(
                     render = { o, prog, cancel -> from.exportPdf(o, prog, cancel) },
                     onReady = { temp -> pendingExportTemp = temp; savePdfLauncher.launch("${from.title}.pdf") })
             },
-            preferences = { backstageView = com.xnotes.ui.BackstageView.PREFERENCES; guardedAll { editor.goHomeAll() } },
+            preferences = {
+                if (editor.noteOpen || editor.secondary?.noteOpen == true) readingPreferences = true
+                else backstageView = com.xnotes.ui.BackstageView.PREFERENCES
+            },
             fullscreen = onToggleFullscreen,
         )
     }
@@ -877,6 +882,9 @@ private fun EditorScreen(
                     backstageView = com.xnotes.ui.BackstageView.HOME
                     guardedAll { editor.goHomeAll() }
                 },
+                onOpenPreferences = {
+                    readingPreferences = true
+                },
                 onClosePane = { pane -> guarded(pane) { pane.goHome() } },
                 onInsertImage = { pane, at ->
                     pendingInsert = PendingInsert(pane, at)
@@ -897,6 +905,33 @@ private fun EditorScreen(
                 },
             )
             SplitHost(editor, actions)
+            if (readingPreferences) {
+                val returnToReading = {
+                    editor.ai.reloadConfig()
+                    editor.secondary?.ai?.reloadConfig()
+                    readingPreferences = false
+                }
+                // Keep SplitHost composed underneath: its editor, AI request and question
+                // draft belong to the reading session, not to this preferences visit.
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = returnToReading,
+                    properties = androidx.compose.ui.window.DialogProperties(
+                        usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
+                    ),
+                ) {
+                    androidx.compose.material3.Surface(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxSize().windowInsetsPadding(contentInsets).padding(16.dp)) {
+                            com.xnotes.ui.PreferencesPane(
+                                editor, compact = true, sidebarOpen = false, onShowSidebar = {},
+                                onBackToHome = returnToReading,
+                                onImportCodeTheme = { importCodeThemeLauncher.launch(arrayOf("*/*")) },
+                                onImportFont = { importFontLauncher.launch(arrayOf("*/*")) },
+                                returnToReading = true,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
     if (showShareChooser) {
@@ -1036,6 +1071,7 @@ private class PaneActions(
     val onToggleFullscreen: () -> Unit,
     /** Leave for the backstage, closing every open pane. */
     val onOpenBackstage: () -> Unit,
+    val onOpenPreferences: () -> Unit,
     /** Close just this pane, leaving the other one to fill the window. */
     val onClosePane: (Editor) -> Unit,
     val onInsertImage: (Editor, com.xnotes.core.geometry.Pt?) -> Unit,
@@ -1177,8 +1213,9 @@ private fun EditorPane(
             }
         }
     }
+    com.xnotes.ai.AiWorkspace(editor, modifier, onOpenPreferences = actions.onOpenPreferences) {
     Column(
-        modifier = modifier
+        modifier = Modifier.fillMaxSize()
             .background(palette.bg.toComposeColor())
             .then(takeFocus)
             .focusRequester(focusRequester)
@@ -1276,6 +1313,7 @@ private fun EditorPane(
             // Last child of the resized column: rides directly above the soft keyboard.
             com.xnotes.ui.TextFormatBar(editor)
         }
+    }
     }
 }
 

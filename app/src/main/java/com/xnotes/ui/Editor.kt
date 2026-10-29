@@ -235,6 +235,103 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
 
     private val appContext = context.applicationContext
 
+    val ai by lazy { com.xnotes.ai.AiAssistant(appContext) }
+
+    fun openAiPage() {
+        commitText()
+        flowText.endSession()
+        val index = state.currentPageIndex()
+        val rect = state.pageRects.getOrNull(index) ?: return
+        prepareAi("${state.document.title} · 第 ${index + 1} 页", rect)
+    }
+
+    fun openAiScreenshot() {
+        val rect = controller.screenshotRect ?: return
+        prepareAi("${state.document.title} · 第 ${state.currentPageIndex() + 1} 页框选内容", rect)
+        controller.clearScreenshot()
+        controller.switchBackAfterScreenshot()
+    }
+
+    fun openAiSelection() {
+        val rect = controller.selectedContentBounds() ?: return
+        prepareAi("${state.document.title} · 所选笔记区域", rect)
+        dismissSelectionMenu()
+    }
+
+    fun openAiPdfText() {
+        val doc = state.document
+        withPdfSelectionText { text ->
+            if (state.document === doc && text.isNotBlank()) {
+                ai.open(com.xnotes.ai.AiSource("${doc.title} · 选中 PDF 文字", text.take(com.xnotes.ai.AiProtocol.MAX_TEXT)),
+                    valid = { noteOpen && state.document === doc }, save = ::appendAiNote)
+            }
+        }
+        dismissPdfTextMenu()
+    }
+
+    private var preparingAi = false
+
+    private fun prepareAi(label: String, rect: Rect) {
+        if (preparingAi) return
+        preparingAi = true
+        val doc = state.document
+        val src = pdfSource
+        val pageIndex = state.currentPageIndex()
+        val pdfPage = doc.pages.getOrNull(pageIndex)?.pdfPage
+        val wholePage = state.pageRects.getOrNull(pageIndex) == rect
+        message = "正在准备 AI 阅读内容…"
+        autosaveScope.launch {
+            try {
+                val bitmap = renderRegionBitmap(rect, maxDim = 1536.0)
+                    ?: throw IllegalArgumentException("没有可读取的页面内容")
+                val encoded = withContext(Dispatchers.Default) {
+                    try {
+                        java.io.ByteArrayOutputStream().use { bytes ->
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, bytes)
+                            android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP)
+                        }
+                    } finally { bitmap.recycle() }
+                }
+                // A crop must never silently attach text outside the user's selected region.
+                val text = if (wholePage && pdfPage != null) withContext(Dispatchers.IO) {
+                    src?.text?.get(pdfPage)?.text().orEmpty().take(com.xnotes.ai.AiProtocol.MAX_TEXT)
+                } else ""
+                if (state.document === doc && noteOpen) {
+                    ai.open(com.xnotes.ai.AiSource(label, text, encoded),
+                        valid = { noteOpen && state.document === doc }, save = ::appendAiNote)
+                    message = null
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { message = "无法准备 AI 阅读内容，请缩小选区后重试" }
+            finally { preparingAi = false }
+        }
+    }
+
+    /** Keep AI output on new pages, in the original format and undo history. */
+    private fun appendAiNote(text: String) {
+        val doc = state.document
+        val (w, h) = PageSize.A4.pixels(Orientation.PORTRAIT, doc.dpi)
+        val margin = 36.0
+        val font = com.xnotes.core.pal.FontSpec(15.0, FontFace.SANS)
+        val chunks = com.xnotes.ai.AiNotePaginator.paginate(text) { part ->
+            textMeasurer.measure(part, font, w - 2 * margin, com.xnotes.core.model.TextItem.FLAGS).h <= h - 2 * margin
+        }
+        val first = doc.pages.size
+        val commands = chunks.mapIndexed { offset, chunk ->
+            val page = Page(w, h)
+            val paper = state.paperColor(page)
+            val ink = if (paper.r * 299 + paper.g * 587 + paper.b * 114 >= 128_000) Rgba(28, 28, 28) else Rgba(236, 236, 236)
+            page.items.add(com.xnotes.core.model.TextItem(Pt(margin, margin), width = w - 2 * margin,
+                text = chunk, rgba = ink, pointSize = 15.0, face = FontFace.SANS, measurer = textMeasurer))
+            AddPage(doc, page, first + offset)
+        }
+        val command = CompositeCommand(commands)
+        command.redo()
+        history.push(command)
+        afterPageEdit()
+        message = "AI 回答已追加到笔记末尾（${chunks.size} 页），可撤销"
+    }
+
     /** The context the views are built from, kept so a second pane can be built the same way. The
      *  application context will not do: it is not attached to a display, so the cutout probe throws
      *  on it and any View made from it misses the activity's theme. */
@@ -1596,11 +1693,10 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
 
     /** Render a content-space rectangle (whatever it overlaps: pages, backgrounds, ink, the gap)
      *  into a bitmap, the screenshot tool's "what I see" capture. */
-    private fun renderRegionBitmap(content: com.xnotes.core.geometry.Rect): android.graphics.Bitmap? {
+    private fun renderRegionBitmap(content: com.xnotes.core.geometry.Rect, maxDim: Double = 4096.0): android.graphics.Bitmap? {
         if (content.w <= 0.0 || content.h <= 0.0) return null
         // 2x content for crispness, but cap the longest side so a big capture can't blow up memory.
-        val maxDim = 4096.0
-        val res = minOf(2.0, maxDim / content.w, maxDim / content.h).coerceAtLeast(0.05)
+        val res = minOf(2.0, maxDim / content.w, maxDim / content.h).coerceAtLeast(0.000001)
         val w = kotlin.math.ceil(content.w * res).toInt().coerceIn(1, maxDim.toInt())
         val h = kotlin.math.ceil(content.h * res).toInt().coerceIn(1, maxDim.toInt())
         val surface = com.xnotes.platform.AndroidRasterSurface.create(w, h)
@@ -1629,6 +1725,10 @@ class Editor(context: Context, val pane: Pane = Pane.PRIMARY) : ToolPopupHost, S
                         state.paintPageBackground?.invoke(page, r, res, local)
                     }
                     state.paintFlow?.invoke(page, r, local)
+                    (r as? com.xnotes.platform.AndroidRenderer)?.let { ar ->
+                        ar.mathPace = com.xnotes.platform.MathRendering.Pace.STILL
+                        state.paintMath?.invoke(page, ar, local)
+                    }
                 }
                 for (item in itemsSnapshot(page)) item.paint(r)
             }

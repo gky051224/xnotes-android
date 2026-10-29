@@ -57,6 +57,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -123,9 +126,14 @@ fun PreferencesPane(
     onBackToHome: () -> Unit,
     onImportCodeTheme: () -> Unit = {},
     onImportFont: () -> Unit = {},
+    returnToReading: Boolean = false,
 ) {
     val palette = LocalPalette.current
     val focusManager = LocalFocusManager.current
+    var appLanguage by remember { mutableStateOf(AppCompatDelegate.getApplicationLocales().toLanguageTags()) }
+    LaunchedEffect(LocalConfiguration.current) {
+        appLanguage = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+    }
     var prefs by remember { mutableStateOf(editor.preferences) }
     fun update(p: Preferences) {
         prefs = p
@@ -142,6 +150,11 @@ fun PreferencesPane(
     LaunchedEffect(editor.prefsVersion) { prefs = editor.preferences }
 
     val scrollState = rememberScrollState()
+    // Returning from either reading pane reveals the AI section at the top, even
+    // when this backstage page was already composed and scrolled underneath it.
+    LaunchedEffect(editor.noteOpen, editor.secondary?.noteOpen) {
+        if (!editor.noteOpen && editor.secondary?.noteOpen != true) scrollState.scrollTo(0)
+    }
     // Which bar the toolbar section is arranging. The two are separate layouts, so the drag state
     // below always belongs to whichever is on screen.
     var canvasTab by remember { mutableStateOf(false) }
@@ -197,9 +210,10 @@ fun PreferencesPane(
         // shifts the settings below: a back arrow to Home on compact, else a hamburger when hidden.
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             if (compact) {
-                Tooltip(stringResource(R.string.back_to_home)) {
+                val backLabel = stringResource(if (returnToReading) R.string.back_to_reading else R.string.back_to_home)
+                Tooltip(backLabel) {
                     IconButton(onClick = onBackToHome) {
-                        Icon(XnotesIcons.prev, stringResource(R.string.back_to_home), tint = palette.text.toComposeColor(), modifier = Modifier.size(24.dp))
+                        Icon(XnotesIcons.prev, backLabel, tint = palette.text.toComposeColor(), modifier = Modifier.size(24.dp))
                     }
                 }
                 Spacer(Modifier.width(4.dp))
@@ -222,6 +236,25 @@ fun PreferencesPane(
                 .onGloballyPositioned { viewport = it.boundsInRoot() },
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            FieldLabel(stringResource(R.string.pref_language))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("" to stringResource(R.string.language_system), "zh-Hans" to "简体中文", "en" to "English").forEach { (tag, label) ->
+                    val selected = when (tag) {
+                        "" -> appLanguage.isBlank()
+                        "zh-Hans" -> appLanguage.startsWith("zh", ignoreCase = true)
+                        else -> appLanguage.startsWith("en", ignoreCase = true)
+                    }
+                    Chip(label, selected) {
+                        focusManager.clearFocus()
+                        appLanguage = tag
+                        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(tag))
+                    }
+                }
+            }
+            HorizontalDivider()
+            SectionTitle(stringResource(R.string.ai_model_settings))
+            com.xnotes.ai.AiPreferencesSection(editor.ai)
+            HorizontalDivider()
             SectionTitle(stringResource(R.string.pref_general))
             FieldLabel(stringResource(R.string.pref_ui_theme))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

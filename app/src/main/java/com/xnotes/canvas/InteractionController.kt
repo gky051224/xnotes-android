@@ -3311,6 +3311,9 @@ class InteractionController(
         return selectionBoundsContent()?.let { Obb.fromAabb(it) }
     }
 
+    /** The selected items' bounding rectangle, without the floating menu/rotation grip. */
+    fun selectedContentBounds(): Rect? = selectionBoundsContent()
+
     private fun selectionBoundsContent(): Rect? {
         if (selection.isEmpty()) return null
         var acc: Rect? = null
