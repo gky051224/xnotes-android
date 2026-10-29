@@ -62,6 +62,8 @@ AI 协议测试覆盖 HTTP/HTTPS 地址、端口与路径处理、图片开关�
 
 `HttpProviderTest` 和 `HttpReadingFlowTest` 在安卓测试设备内启动仅监听回环地址的 HTTP 服务，使用真实 Android 网络请求检查连接测试、鉴权头、页面图片、连续追问、失败响应、取消，以及配置表单、保存回答和撤销/重做。该服务返回固定测试回答，不代表真实模型回答质量；测试不需要真实 Key。
 
+`LiveProviderTest` 是手动启用的真实接口兼容性测试：通过运行参数 `provider_config_url` 指定仅供模拟器使用的一次性回环配置服务，该服务返回 `baseUrl`、`model` 和 `key`。测试使用应用的 `AiProtocol` 与 `AiHttp` 检查连接、匿名资料问答、追问和图片输入；凭据只在内存中使用，结果不包含 Key。未显式提供配置服务时自动跳过，不会在常规测试中调用付费服务。图片检查只验证简单校验码识别，不等同于手写或整页文档识别质量验收。
+
 ## 二开选型记录
 
 检查了 XNotes 的 Editor、截图渲染、PDF 文字缓存、文档模型与撤销机制，以及 Saber 的 EditorExporter、PDF 图片模型、依赖清单与 Android 构建流程。
