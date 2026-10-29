@@ -19,7 +19,7 @@ class AiProtocolTest {
 
     @Test fun connectionTestRequiresCompleteProviderSettings() {
         assertThrows(IllegalArgumentException::class.java) { AiProtocol.connectionTestRequest(config.copy(apiKey = "")) }
-        assertThrows(IllegalArgumentException::class.java) { AiProtocol.connectionTestRequest(config.copy(baseUrl = "http://example.com")) }
+        assertThrows(IllegalArgumentException::class.java) { AiProtocol.connectionTestRequest(config.copy(model = "")) }
     }
 
     @Test fun endpointAcceptsBaseOrFullPath() {
@@ -27,10 +27,36 @@ class AiProtocolTest {
         assertEquals("https://example.com/custom/chat/completions", config.copy(baseUrl = "https://example.com/custom/chat/completions/").endpoint())
     }
 
-    @Test fun endpointRejectsCredentialsPlainHttpAndQuery() {
-        listOf("http://example.com/v1", "https://user:pass@example.com", "https://example.com?key=x", "https://example.com/#key", "not-a-url").forEach { url ->
+    @Test fun endpointRejectsCredentialsUnsupportedSchemesAndQuery() {
+        listOf("ftp://example.com/v1", "file:///v1", "https://user:pass@example.com", "https://example.com?key=x", "https://example.com/#key", "not-a-url").forEach { url ->
             assertThrows(IllegalArgumentException::class.java) { config.copy(baseUrl = url).endpoint() }
         }
+    }
+
+    @Test fun httpEndpointsKeepSchemeHostPortAndCustomPath() {
+        mapOf(
+            "http://192.168.1.10:8000/v1/" to "http://192.168.1.10:8000/v1/chat/completions",
+            "http://localhost:11434/v1" to "http://localhost:11434/v1/chat/completions",
+            "http://example.com/custom/chat/completions/" to "http://example.com/custom/chat/completions",
+            "http://[::1]:8000/v1" to "http://[::1]:8000/v1/chat/completions",
+            " HTTP://example.com/v1 " to "HTTP://example.com/v1/chat/completions",
+        ).forEach { (input, expected) -> assertEquals(expected, config.copy(baseUrl = input).endpoint()) }
+    }
+
+    @Test fun endpointRejectsMalformedHostsAndPorts() {
+        listOf("http://", "http://:8000/v1", "http://example.com:0/v1", "http://example.com:65536/v1",
+            "http://example.com:-1/v1", "http://example.com:/v1", "http://example.com:abc/v1",
+            "http://example.com/v1\nInjected: value").forEach { url ->
+            assertThrows("Should reject $url", IllegalArgumentException::class.java) { config.copy(baseUrl = url).endpoint() }
+        }
+    }
+
+    @Test fun httpWorksForBothConnectionTestAndImageConversation() {
+        val http = config.copy(baseUrl = "http://192.168.1.10:8080/v1/")
+        assertEquals(1, JSONObject(AiProtocol.connectionTestRequest(http)).getJSONArray("messages").length())
+        val request = JSONObject(AiProtocol.request(http, AiSource("fixture", "text", "image"), emptyList(), "question"))
+        assertTrue(request.toString().contains("image_url"))
+        assertFalse(request.toString().contains("test-key"))
     }
 
     @Test fun requestAttachesImageAndOnlyTheLastFourTurns() {

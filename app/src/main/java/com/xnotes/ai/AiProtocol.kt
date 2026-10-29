@@ -7,8 +7,10 @@ import org.json.JSONObject
 data class AiConfig(val baseUrl: String = "", val model: String = "", val apiKey: String = "", val vision: Boolean = true) {
     fun endpoint(): String {
         val uri = runCatching { URI(baseUrl.trim()) }.getOrNull()
-        require(uri != null && uri.scheme == "https" && !uri.host.isNullOrBlank() &&
-            uri.userInfo == null && uri.query == null && uri.fragment == null) { "请填写有效的 HTTPS 模型接口地址" }
+        require(uri != null && (uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true)) &&
+            !uri.host.isNullOrBlank() && (uri.port == -1 || uri.port in 1..65535) &&
+            !uri.rawAuthority.orEmpty().endsWith(':') &&
+            uri.userInfo == null && uri.query == null && uri.fragment == null) { "请填写有效的 HTTP 或 HTTPS 模型接口地址" }
         val base = uri.toString().trimEnd('/')
         return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
     }

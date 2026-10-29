@@ -1000,6 +1000,8 @@
     <string name="ai_connect_description">支持 Chat Completions 格式的兼容接口。手写和扫描页需要支持图片输入的模型。</string>
     <string name="ai_endpoint">接口地址</string>
     <string name="ai_endpoint_hint">https://你的服务商/v1</string>
+    <string name="ai_endpoint_help">支持 HTTP、HTTPS、IP 地址和端口，例如 http://192.168.1.10:8000/v1；也可填写完整的 /chat/completions 地址。</string>
+    <string name="ai_http_notice">HTTP 会以明文传输 API Key 和内容，请在你信任的网络中使用。</string>
     <string name="ai_model_name">模型名称</string>
     <string name="ai_api_key">API Key</string>
     <string name="ai_attach_image">附带页面图片</string>

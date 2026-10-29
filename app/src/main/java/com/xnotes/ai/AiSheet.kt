@@ -212,6 +212,10 @@ private fun AiSettings(ai: AiAssistant, draft: AiSettingsDraft, modifier: Modifi
         Text(stringResource(R.string.ai_connect_title), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.ai_connect_description), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(draft.url, { draft.url = it; result = null }, label = { Text(stringResource(R.string.ai_endpoint)) }, placeholder = { Text(stringResource(R.string.ai_endpoint_hint)) }, singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
+        Text(stringResource(R.string.ai_endpoint_help), style = MaterialTheme.typography.bodySmall)
+        if (draft.url.trim().startsWith("http://", ignoreCase = true)) {
+            Text(stringResource(R.string.ai_http_notice), style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedTextField(draft.model, { draft.model = it; result = null }, label = { Text(stringResource(R.string.ai_model_name)) }, singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(draft.key, { draft.key = it; result = null }, label = { Text(stringResource(R.string.ai_api_key)) }, visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !testing, modifier = Modifier.fillMaxWidth())
         Row(verticalAlignment = Alignment.CenterVertically) {

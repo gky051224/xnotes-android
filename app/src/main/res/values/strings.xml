@@ -1026,6 +1026,8 @@
     <string name="ai_connect_description">Supports Chat Completions compatible services. Handwriting and scanned pages need a model that accepts images.</string>
     <string name="ai_endpoint">API endpoint</string>
     <string name="ai_endpoint_hint">https://your-provider/v1</string>
+    <string name="ai_endpoint_help">Supports HTTP and HTTPS, including IP addresses and ports, such as http://192.168.1.10:8000/v1. A full /chat/completions URL also works.</string>
+    <string name="ai_http_notice">HTTP sends your API Key and content without encryption. Use a network you trust.</string>
     <string name="ai_model_name">Model name</string>
     <string name="ai_api_key">API Key</string>
     <string name="ai_attach_image">Include page image</string>

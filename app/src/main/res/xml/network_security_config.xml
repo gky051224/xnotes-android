@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Provider hosts are user-configured, including LAN IPs and custom ports.
+         HTTPS keeps Android's default certificate and hostname verification. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
